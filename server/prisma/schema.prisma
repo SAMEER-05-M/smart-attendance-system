@@ -1,0 +1,255 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("STUDENT") // "ADMIN", "FACULTY", "STUDENT"
+  fullName     String
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  studentProfile  StudentProfile?
+  facultyProfile  FacultyProfile?
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g. "CSE"
+  name        String   // "Computer Science and Engineering"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  courses         Course[]
+  subjects        Subject[]
+  studentProfiles StudentProfile[]
+  facultyProfiles FacultyProfile[]
+}
+
+model Course {
+  id             String   @id @default(uuid())
+  code           String   @unique // e.g. "BTECH-CSE-AIML"
+  name           String   // "B.Tech Computer Science & Engineering (AI/ML)"
+  totalSemesters Int      @default(8)
+  departmentId   String
+  department     Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  classSections   ClassSection[]
+  studentProfiles StudentProfile[]
+}
+
+model Subject {
+  id           String     @id @default(uuid())
+  code         String     @unique // e.g. "CS601"
+  name         String     // "Deep Learning & Neural Networks"
+  credits      Int        @default(4)
+  semester     Int        @default(6)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  assignments        FacultyAssignment[]
+  attendanceSessions AttendanceSession[]
+}
+
+model ClassSection {
+  id           String   @id @default(uuid())
+  name         String   // "Section A"
+  academicYear String   // "2026-27"
+  semester     Int      @default(6)
+  courseId     String
+  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  enrollments        Enrollment[]
+  assignments        FacultyAssignment[]
+  attendanceSessions AttendanceSession[]
+
+  @@unique([name, academicYear, semester, courseId])
+}
+
+model StudentProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rollNumber      String   @unique // e.g. "23CSE-AIML-042"
+  departmentId    String
+  department      Department @relation(fields: [departmentId], references: [id])
+  courseId        String
+  course          Course     @relation(fields: [courseId], references: [id])
+  currentSemester Int      @default(6)
+  faceEnrolled    Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  enrollments         Enrollment[]
+  attendanceRecords   AttendanceRecord[]
+  correctionRequests  AttendanceCorrectionRequest[]
+  faceTemplate        FaceTemplate?
+}
+
+model FacultyProfile {
+  id           String     @id @default(uuid())
+  userId       String     @unique
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId   String     @unique // e.g. "FAC-CSE-012"
+  designation  String     @default("Assistant Professor")
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  assignments        FacultyAssignment[]
+  attendanceSessions AttendanceSession[]
+}
+
+model Enrollment {
+  id               String       @id @default(uuid())
+  studentProfileId String
+  studentProfile   StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  classSectionId   String
+  classSection     ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  academicYear     String       // "2026-27"
+  status           String       @default("ACTIVE") // "ACTIVE", "COMPLETED", "DROPPED"
+  createdAt        DateTime     @default(now())
+
+  @@unique([studentProfileId, classSectionId])
+}
+
+model FacultyAssignment {
+  id               String       @id @default(uuid())
+  facultyProfileId String
+  facultyProfile   FacultyProfile @relation(fields: [facultyProfileId], references: [id], onDelete: Cascade)
+  subjectId        String
+  subject          Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  classSectionId   String
+  classSection     ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  academicYear     String       // "2026-27"
+  createdAt        DateTime     @default(now())
+
+  @@unique([facultyProfileId, subjectId, classSectionId, academicYear])
+}
+
+model AttendanceSession {
+  id               String         @id @default(uuid())
+  code             String         @unique // Random or short session code e.g. "SAMS-7821"
+  subjectId        String
+  subject          Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  classSectionId   String
+  classSection     ClassSection   @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  facultyProfileId String
+  facultyProfile   FacultyProfile @relation(fields: [facultyProfileId], references: [id], onDelete: Cascade)
+  title            String         // e.g. "Lecture 24: ResNet Architecture"
+  lectureTopic     String?
+  sessionDate      DateTime       @default(now())
+  startTime        DateTime       @default(now())
+  endTime          DateTime?
+  durationMinutes  Int            @default(15)
+  qrToken          String         @unique
+  qrTokenExpiresAt DateTime
+  status           String         @default("ACTIVE") // "ACTIVE", "COMPLETED", "CANCELLED"
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  attendanceRecords  AttendanceRecord[]
+  correctionRequests AttendanceCorrectionRequest[]
+}
+
+model AttendanceRecord {
+  id                  String            @id @default(uuid())
+  attendanceSessionId String
+  attendanceSession   AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
+  studentProfileId    String
+  studentProfile      StudentProfile    @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  status              String            @default("PRESENT") // "PRESENT", "ABSENT", "LATE", "EXCUSED"
+  verificationMethod  String            @default("QR_SCAN") // "QR_SCAN", "FACE_VERIFIED", "MANUAL_FACULTY", "MANUAL_ADMIN"
+  markedAt            DateTime          @default(now())
+  correctedAt         DateTime?
+  correctedByUserId   String?
+  correctionReason    String?
+  remarks             String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  correctionRequests AttendanceCorrectionRequest[]
+
+  @@unique([attendanceSessionId, studentProfileId])
+}
+
+model AttendanceCorrectionRequest {
+  id                  String            @id @default(uuid())
+  attendanceRecordId  String?
+  attendanceRecord    AttendanceRecord? @relation(fields: [attendanceRecordId], references: [id], onDelete: SetNull)
+  studentProfileId    String
+  studentProfile      StudentProfile    @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  attendanceSessionId String
+  attendanceSession   AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
+  requestedStatus     String            @default("PRESENT") // "PRESENT", "EXCUSED"
+  reason              String
+  status              String            @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
+  reviewedByUserId    String?
+  reviewNotes         String?
+  reviewedAt          DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("INFO") // "INFO", "WARNING", "ALERT", "SUCCESS"
+  isRead    Boolean  @default(false)
+  linkUrl   String?
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   // e.g. "ATTENDANCE_MARKED", "SESSION_STARTED", "RECORD_CORRECTED", "USER_LOGIN"
+  entity    String   // e.g. "AttendanceRecord", "AttendanceSession", "User"
+  entityId  String?
+  details   String?  // JSON formatted audit details
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+model FaceTemplate {
+  id               String         @id @default(uuid())
+  studentProfileId String         @unique
+  studentProfile   StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  descriptor       String         // JSON stringified 128D array or normalized embedding vector
+  modelVersion     String         @default("face-api-v1")
+  consentGiven     Boolean        @default(true)
+  consentTimestamp DateTime       @default(now())
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
